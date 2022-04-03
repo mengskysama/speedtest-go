@@ -18,6 +18,7 @@ var (
 
 type DataAccess interface {
 	Insert(*schema.TelemetryData) error
+	Delete(*schema.TelemetryData) error
 	FetchByUUID(string) (*schema.TelemetryData, error)
 	FetchLast100() ([]schema.TelemetryData, error)
 }

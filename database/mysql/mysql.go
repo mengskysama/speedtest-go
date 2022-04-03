@@ -33,6 +33,12 @@ func (p *MySQL) Insert(data *schema.TelemetryData) error {
 	return err
 }
 
+func (p *MySQL) Delete(data *schema.TelemetryData) error {
+	stmt := `DELETE FROM speedtest_users WHERE ip = ?;`
+	_, err := p.db.Exec(stmt, data.IPAddress)
+	return err
+}
+
 func (p *MySQL) FetchByUUID(uuid string) (*schema.TelemetryData, error) {
 	var record schema.TelemetryData
 	row := p.db.QueryRow(`SELECT * FROM speedtest_users WHERE uuid = ?`, uuid)

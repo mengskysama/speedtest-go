@@ -1,17 +1,19 @@
 package results
 
 import (
-	"html/template"
-	"net/http"
-
+	"encoding/json"
 	"github.com/go-chi/render"
-	log "github.com/sirupsen/logrus"
-
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 	"github.com/librespeed/speedtest/config"
 	"github.com/librespeed/speedtest/database"
 	"github.com/librespeed/speedtest/database/schema"
+	"github.com/librespeed/speedtest/iputils"
+	log "github.com/sirupsen/logrus"
+	"html/template"
+	"net/http"
+	"strconv"
+	"strings"
 )
 
 type StatsData struct {
@@ -34,6 +36,69 @@ func init() {
 	}
 }
 
+type PublicData struct {
+	Addr    string  `json:"addr"`
+	Created string  `json:"created"`
+	Dspeed  float64 `json:"dspeed"`
+	IP      string  `json:"ip"`
+	ISP     string  `json:"isp"`
+	Jitter  float64 `json:"jitter"`
+	Key     string  `json:"key"`
+	Ping    float64 `json:"ping"`
+	Uspeed  float64 `json:"uspeed"`
+	ID      int     `json:"_id"`
+}
+type PublicStatsResp struct {
+	Data []PublicData `json:"data"`
+	Code int          `json:"code"`
+}
+
+func PublicStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := database.DB.FetchLast100()
+	if err != nil {
+		log.Errorf("Error fetching data from database: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	ipInfo := &iputils.IPInfoResponse{}
+	ds := make([]PublicData, len(stats))
+	for idx, s := range stats {
+		d := PublicData{}
+		err := json.Unmarshal([]byte(s.ISPInfo), &ipInfo)
+		if err != nil {
+			log.Warnf("ISPInfo Unmarshal error: %s", err)
+			continue
+		}
+
+		d.Addr = ipInfo.Country + "," + ipInfo.Region + "," + ipInfo.City
+		d.ISP = ipInfo.Isp
+
+		// mask ip address
+		pos := strings.LastIndex(ipInfo.IP, ".")
+		if pos < 0 {
+			pos = strings.LastIndex(ipInfo.IP, ":")
+		}
+		if pos > 0 {
+			d.IP = ipInfo.IP[:pos+1] + "*"
+		}
+
+		d.Created = s.Timestamp.Format("2006-01-02 15:04:05")
+		d.Dspeed, _ = strconv.ParseFloat(s.Download, 64)
+		d.Jitter, _ = strconv.ParseFloat(s.Jitter, 64)
+		d.Key = s.UUID
+		d.Ping, _ = strconv.ParseFloat(s.Ping, 64)
+		d.Uspeed, _ = strconv.ParseFloat(s.Upload, 64)
+		ds[idx] = d
+	}
+
+	resp := PublicStatsResp{
+		Data: ds,
+	}
+	msg, _ := json.Marshal(resp)
+	_, _ = w.Write(msg)
+}
+
 func Stats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	t, err := template.New("template").Parse(htmlTemplate)
@@ -45,7 +110,7 @@ func Stats(w http.ResponseWriter, r *http.Request) {
 
 	conf := config.LoadedConfig()
 
-	if conf.DatabaseType == "none" {
+	if conf.DatabaseType == "none" || conf.StatsPassword == "DISABLE" {
 		render.PlainText(w, r, "Statistics are disabled")
 		return
 	}

@@ -33,6 +33,20 @@ func (mem *Memory) Insert(data *schema.TelemetryData) error {
 	return nil
 }
 
+func (mem *Memory) Delete(data *schema.TelemetryData) error {
+	mem.lock.Lock()
+	defer mem.lock.Unlock()
+
+Loop:
+	for idx, record := range mem.records {
+		if record.IPAddress == data.IPAddress {
+			mem.records = append(mem.records[:idx], mem.records[idx+1:]...)
+			goto Loop
+		}
+	}
+	return nil
+}
+
 func (mem *Memory) FetchByUUID(uuid string) (*schema.TelemetryData, error) {
 	mem.lock.RLock()
 	defer mem.lock.RUnlock()

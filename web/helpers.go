@@ -2,18 +2,13 @@ package web
 
 import (
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"net/http"
-	"strconv"
-	"strings"
-
+	"github.com/librespeed/speedtest/config"
+	"github.com/librespeed/speedtest/iputils"
 	log "github.com/sirupsen/logrus"
 	"github.com/umahmood/haversine"
-
-	"github.com/librespeed/speedtest/config"
-	"github.com/librespeed/speedtest/results"
+	"strconv"
+	"strings"
 )
 
 var (
@@ -28,45 +23,6 @@ func getRandomData(length int) []byte {
 	return data
 }
 
-func getIPInfoURL(address string) string {
-	apiKey := config.LoadedConfig().IPInfoAPIKey
-
-	ipInfoURL := `https://ipinfo.io/%s/json`
-	if address != "" {
-		ipInfoURL = fmt.Sprintf(ipInfoURL, address)
-	} else {
-		ipInfoURL = "https://ipinfo.io/json"
-	}
-
-	if apiKey != "" {
-		ipInfoURL += "?token=" + apiKey
-	}
-
-	return ipInfoURL
-}
-
-func getIPInfo(addr string) results.IPInfoResponse {
-	var ret results.IPInfoResponse
-	resp, err := http.DefaultClient.Get(getIPInfoURL(addr))
-	if err != nil {
-		log.Errorf("Error getting response from ipinfo.io: %s", err)
-		return ret
-	}
-
-	raw, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Errorf("Error reading response from ipinfo.io: %s", err)
-		return ret
-	}
-	defer resp.Body.Close()
-
-	if err := json.Unmarshal(raw, &ret); err != nil {
-		log.Errorf("Error parsing response from ipinfo.io: %s", err)
-	}
-
-	return ret
-}
-
 func SetServerLocation(conf *config.Config) {
 	if conf.ServerLat != 0 || conf.ServerLng != 0 {
 		log.Infof("Configured server coordinates: %.6f, %.6f", conf.ServerLat, conf.ServerLng)
@@ -75,30 +31,12 @@ func SetServerLocation(conf *config.Config) {
 		return
 	}
 
-	var ret results.IPInfoResponse
-	resp, err := http.DefaultClient.Get(getIPInfoURL(""))
+	var err error
+	r := iputils.GetIPInfo("")
+	serverCoord, err = parseLocationString(r.Location)
 	if err != nil {
-		log.Errorf("Error getting repsonse from ipinfo.io: %s", err)
+		log.Errorf("Cannot get server coordinates: %s", err)
 		return
-	}
-	raw, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Errorf("Error reading response from ipinfo.io: %s", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if err := json.Unmarshal(raw, &ret); err != nil {
-		log.Errorf("Error parsing response from ipinfo.io: %s", err)
-		return
-	}
-
-	if ret.Location != "" {
-		serverCoord, err = parseLocationString(ret.Location)
-		if err != nil {
-			log.Errorf("Cannot get server coordinates: %s", err)
-			return
-		}
 	}
 
 	log.Infof("Fetched server coordinates: %.6f, %.6f", serverCoord.Lat, serverCoord.Lon)

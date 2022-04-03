@@ -10,6 +10,8 @@
 
 //INITIALIZE SPEEDTEST
 var s=new Speedtest(); //create speedtest object
+s.setParameter("telemetry_level","basic"); //enable telemetry
+
 s.onupdate=function(data){ //callback to update data in UI
     I("ip").textContent=data.clientIp;
     I("dlText").textContent=(data.testState==1&&data.dlStatus==0)?"...":data.dlStatus;
@@ -204,6 +206,7 @@ function I(id){return document.getElementById(id);}
 		IP Address: <span id="ip"></span>
 	</div>
 </div>
+<p><a href="./results.html" target="_blank">查看测速记录</a></p>
 <a href="https://github.com/librespeed/speedtest">Source code</a>
 <script type="text/javascript">
     initUI();

@@ -33,6 +33,12 @@ func (p *PostgreSQL) Insert(data *schema.TelemetryData) error {
 	return err
 }
 
+func (p *PostgreSQL) Delete(data *schema.TelemetryData) error {
+	stmt := `DELETE FROM speedtest_users WHERE ip = $1;`
+	_, err := p.db.Exec(stmt, data.IPAddress)
+	return err
+}
+
 func (p *PostgreSQL) FetchByUUID(uuid string) (*schema.TelemetryData, error) {
 	var record schema.TelemetryData
 	row := p.db.QueryRow(`SELECT * FROM speedtest_users WHERE uuid = $1`, uuid)

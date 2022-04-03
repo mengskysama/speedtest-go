@@ -6,6 +6,14 @@ No Flash, No Java, No WebSocket, No Bullshit.
 
 This is a very lightweight speed test implemented in JavaScript, using XMLHttpRequest and Web Workers.
 
+## Quick start
+```
+mkdir -p /opt/speedtest-go && cd /opt/speedtest-go
+wget https://github.com/mengskysama/speedtest-go/releases/download/v1.1.5-alpha/speedtest-go-v1.1.5-alpha-linux-amd64.tar.gz
+tar -zxvf speedtest-go-v1.1.5-alpha-linux-amd64.tar.gz
+nohup ./speedtest-go -c settings.toml &
+```
+
 ## Try it
 [Take a speed test](https://speedtest.zzz.cat)
 
@@ -86,32 +94,29 @@ manually, you can install newer version of Go into your `GOPATH`:
 
     ```toml
     # bind address, use empty string to bind to all interfaces
-    bind_address="127.0.0.1"
-    # backend listen port, default is 8989
-    listen_port=8989
+    bind_address=""
+    # backend listen port
+    listen_port=9999
     # proxy protocol port, use 0 to disable
     proxyprotocol_port=0
-    # Server location, use zeroes to fetch from API automatically
+    # Server location
     server_lat=0
     server_lng=0
     # ipinfo.io API key, if applicable
     ipinfo_api_key=""
-   
-    # assets directory path, defaults to `assets` in the same directory
-    # if the path cannot be found, embedded default assets will be used
-    assets_path="./assets"
 
-    # password for logging into statistics page, change this to enable stats page
-    statistics_password="PASSWORD"
-    # redact IP addresses
-    redact_ip_addresses=false
+    # assets directory path, defaults to `assets` in the same directory
+    assets_path=""
+
+    # password for logging into statistics page
+    statistics_password="DISABLE"
 
     # database type for statistics data, currently supports: none, memory, bolt, mysql, postgresql
     # if none is specified, no telemetry/stats will be recorded, and no result PNG will be generated
-    database_type="postgresql"
-    database_hostname="localhost"
+    database_type="bolt"
+    database_hostname=""
     database_name="speedtest"
-    database_username="postgres"
+    database_username=""
     database_password=""
 
     # if you use `bolt` as database, set database_file to database file location
@@ -124,6 +129,15 @@ manually, you can install newer version of Go into your `GOPATH`:
     # if you use HTTP/2 or TLS, you need to prepare certificates and private keys
     # tls_cert_file="cert.pem"
     # tls_key_file="privkey.pem"
+
+    # ip every 24h limit traffic limit /GB
+    ip_daily_traffic_limit=10
+
+    # each ip only record one result
+    same_ip_multi_logs=false
+
+    # if behind proxy open it read real ip from x-forwarded-for
+    enable_xff_ip=false
     ```
 
 ## Differences between Go and PHP implementation and caveats

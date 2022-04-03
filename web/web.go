@@ -4,6 +4,17 @@ import (
 	"crypto/tls"
 	"embed"
 	"encoding/json"
+	"fmt"
+	"github.com/coreos/go-systemd/activation"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	"github.com/go-chi/render"
+	"github.com/librespeed/speedtest/config"
+	"github.com/librespeed/speedtest/iputils"
+	"github.com/librespeed/speedtest/results"
+	"github.com/pires/go-proxyproto"
+	log "github.com/sirupsen/logrus"
 	"io"
 	"io/fs"
 	"io/ioutil"
@@ -13,35 +24,24 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/coreos/go-systemd/activation"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
-	"github.com/go-chi/render"
-	"github.com/pires/go-proxyproto"
-	log "github.com/sirupsen/logrus"
-
-	"github.com/librespeed/speedtest/config"
-	"github.com/librespeed/speedtest/results"
 )
 
 const (
 	// chunk size is 1 mib
-	chunkSize = 1048576
+	chunkSize       = 1 * 1024 * 1024
+	chunkMax        = 100
+	uploadBodyLimit = 100 * 1024 * 1024
 )
 
-//go:embed assets
-var defaultAssets embed.FS
-
 var (
+	//go:embed assets
+	defaultAssets embed.FS
 	// generate random data for download test on start to minimize runtime overhead
 	randomData = getRandomData(chunkSize)
 )
 
 func ListenAndServe(conf *config.Config) error {
 	r := chi.NewRouter()
-	r.Use(middleware.RealIP)
 	r.Use(middleware.GetHead)
 
 	cs := cors.New(cors.Options{
@@ -81,6 +81,7 @@ func ListenAndServe(conf *config.Config) error {
 	r.Post("/backend/results/telemetry", results.Record)
 	r.HandleFunc("/stats", results.Stats)
 	r.HandleFunc("/backend/stats", results.Stats)
+	r.HandleFunc("/backend/results-api.php", results.PublicStats)
 
 	// PHP frontend default values compatibility
 	r.HandleFunc("/empty.php", empty)
@@ -170,7 +171,15 @@ func pages(fs http.FileSystem) http.HandlerFunc {
 }
 
 func empty(w http.ResponseWriter, r *http.Request) {
-	_, err := io.Copy(ioutil.Discard, r.Body)
+	ip := iputils.GetClientIP(r)
+	if iputils.IsLimited(ip) {
+		w.WriteHeader(403)
+		_, _ = fmt.Fprintf(w, "traffic limit")
+		return
+	}
+
+	n, err := io.CopyN(ioutil.Discard, r.Body, uploadBodyLimit)
+	iputils.AddTraffic(ip, n)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -182,6 +191,13 @@ func empty(w http.ResponseWriter, r *http.Request) {
 }
 
 func garbage(w http.ResponseWriter, r *http.Request) {
+	ip := iputils.GetClientIP(r)
+	if iputils.IsLimited(ip) {
+		w.WriteHeader(403)
+		_, _ = fmt.Fprintf(w, "traffic limit")
+		return
+	}
+
 	w.Header().Set("Content-Description", "File Transfer")
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", "attachment; filename=random.dat")
@@ -197,34 +213,28 @@ func garbage(w http.ResponseWriter, r *http.Request) {
 			log.Errorf("Invalid chunk size: %s", ckSize)
 			log.Warnf("Will use default value %d", chunks)
 		} else {
-			// limit max chunk size to 1024
-			if i > 1024 {
-				chunks = 1024
+			if i > chunkMax {
+				chunks = chunkMax
 			} else {
 				chunks = int(i)
 			}
 		}
 	}
 
+	chunkSize := int64(len(randomData))
 	for i := 0; i < chunks; i++ {
+		iputils.AddTraffic(ip, chunkSize)
 		if _, err := w.Write(randomData); err != nil {
-			log.Errorf("Error writing back to client at chunk number %d: %s", i, err)
 			break
 		}
 	}
 }
 
 func getIP(w http.ResponseWriter, r *http.Request) {
+
 	var ret results.Result
 
-	clientIP := r.RemoteAddr
-	clientIP = strings.ReplaceAll(clientIP, "::ffff:", "")
-
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		clientIP = ip
-	}
-
+	clientIP := iputils.GetClientIP(r)
 	isSpecialIP := true
 	switch {
 	case clientIP == "::1":
@@ -257,29 +267,30 @@ func getIP(w http.ResponseWriter, r *http.Request) {
 
 	getISPInfo := r.FormValue("isp") == "true"
 	distanceUnit := r.FormValue("distance")
-
 	ret.ProcessedString = clientIP
 
 	if getISPInfo {
-		ispInfo := getIPInfo(clientIP)
+		ispInfo := iputils.GetIPInfo(clientIP)
 		ret.RawISPInfo = ispInfo
 
-		removeRegexp := regexp.MustCompile(`AS\d+\s`)
-		isp := removeRegexp.ReplaceAllString(ispInfo.Organization, "")
-
-		if isp == "" {
-			isp = "Unknown ISP"
+		display := ispInfo.Isp
+		if ispInfo.Isp == "" {
+			display = "Unknown ISP"
+		} else {
+			if ispInfo.Country != "" {
+				display += " " + ispInfo.Country
+			}
+			if ispInfo.Region != "" {
+				display += ", " + ispInfo.Region
+			}
+			if ispInfo.City != "" {
+				display += ", " + ispInfo.City
+			}
+			if ispInfo.Location != "" {
+				display += " (" + calculateDistance(ispInfo.Location, distanceUnit) + ")"
+			}
 		}
-
-		if ispInfo.Country != "" {
-			isp += ", " + ispInfo.Country
-		}
-
-		if ispInfo.Location != "" {
-			isp += " (" + calculateDistance(ispInfo.Location, distanceUnit) + ")"
-		}
-
-		ret.ProcessedString += " - " + isp
+		ret.ProcessedString += " - " + display
 	}
 
 	render.JSON(w, r, ret)

@@ -3,6 +3,7 @@ package config
 import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"os"
 )
 
 type Config struct {
@@ -14,7 +15,6 @@ type Config struct {
 	IPInfoAPIKey      string  `mapstructure:"ipinfo_api_key"`
 
 	StatsPassword string `mapstructure:"statistics_password"`
-	RedactIP      bool   `mapstructure:"redact_ip_addresses"`
 
 	AssetsPath string `mapstructure:"assets_path"`
 
@@ -30,6 +30,11 @@ type Config struct {
 	EnableTLS   bool   `mapstructure:"enable_tls"`
 	TLSCertFile string `mapstructure:"tls_cert_file"`
 	TLSKeyFile  string `mapstructure:"tls_key_file"`
+
+	EnableResultPNG     bool  `mapstructure:"enable_result_png"`
+	IPDailyTrafficLimit int64 `mapstructure:"ip_daily_traffic_limit"`
+	SameIPMultiLogs     bool  `mapstructure:"same_ip_multi_logs"`
+	EnableXFFIP         bool  `mapstructure:"enable_xff_ip"`
 }
 
 var (
@@ -44,13 +49,16 @@ func init() {
 	viper.SetDefault("distance_unit", "K")
 	viper.SetDefault("enable_cors", false)
 	viper.SetDefault("statistics_password", "PASSWORD")
-	viper.SetDefault("redact_ip_addresses", false)
 	viper.SetDefault("database_type", "postgresql")
 	viper.SetDefault("database_hostname", "localhost")
 	viper.SetDefault("database_name", "speedtest")
 	viper.SetDefault("database_username", "postgres")
 	viper.SetDefault("enable_tls", false)
 	viper.SetDefault("enable_http2", false)
+	viper.SetDefault("enable_result_png", false)
+	viper.SetDefault("ip_daily_traffic_limit", 0)
+	viper.SetDefault("same_ip_multi_logs", false)
+	viper.SetDefault("enable_xff_ip", false)
 
 	viper.SetConfigName("settings")
 	viper.AddConfigPath(".")
@@ -65,6 +73,8 @@ func Load(configPath string) Config {
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			log.Warnf("No config file found in search paths, using default values")
+			os.Create(configPath)
+			_ = viper.WriteConfig()
 		} else {
 			log.Fatalf("Error reading config: %s", err)
 		}

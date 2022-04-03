@@ -14,6 +14,10 @@ func (n *None) Insert(_ *schema.TelemetryData) error {
 	return nil
 }
 
+func (n *None) Delete(_ *schema.TelemetryData) error {
+	return nil
+}
+
 func (n *None) FetchByUUID(_ string) (*schema.TelemetryData, error) {
 	return &schema.TelemetryData{}, nil
 }

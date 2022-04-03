@@ -22,4 +22,5 @@ require (
 	go.etcd.io/bbolt v1.3.6
 	golang.org/x/image v0.0.0-20211028202545-6944b10bf410
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 )

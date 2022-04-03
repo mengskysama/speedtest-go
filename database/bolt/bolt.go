@@ -39,6 +39,26 @@ func (p *Bolt) Insert(data *schema.TelemetryData) error {
 	})
 }
 
+func (p *Bolt) Delete(data *schema.TelemetryData) error {
+	return p.db.Update(func(tx *bbolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists([]byte(bucketName))
+		if err != nil {
+			return err
+		}
+
+		datas, _ := p.FetchAll()
+		for _, d := range datas {
+			if d.IPAddress == data.IPAddress {
+				err = bucket.Delete([]byte(d.UUID))
+				if err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
 func (p *Bolt) FetchByUUID(uuid string) (*schema.TelemetryData, error) {
 	var record schema.TelemetryData
 	err := p.db.View(func(tx *bbolt.Tx) error {
@@ -76,6 +96,34 @@ func (p *Bolt) FetchLast100() ([]schema.TelemetryData, error) {
 			}
 		}
 
+		return nil
+	})
+	return records, err
+}
+
+func (p *Bolt) FetchAll() ([]schema.TelemetryData, error) {
+	var records []schema.TelemetryData
+	err := p.db.View(func(tx *bbolt.Tx) error {
+		var record schema.TelemetryData
+		bucket := tx.Bucket([]byte(bucketName))
+		if bucket == nil {
+			return errors.New("data bucket doesn't exist yet")
+		}
+
+		cursor := bucket.Cursor()
+		_, b := cursor.Last()
+
+		for {
+			if err := json.Unmarshal(b, &record); err != nil {
+				return err
+			}
+			records = append(records, record)
+
+			_, b = cursor.Prev()
+			if b == nil {
+				break
+			}
+		}
 		return nil
 	})
 	return records, err

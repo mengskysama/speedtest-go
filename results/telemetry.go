@@ -3,14 +3,14 @@ package results
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
+	"github.com/librespeed/speedtest/iputils"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/png"
 	"math/rand"
-	"net"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -44,10 +44,6 @@ var fontMediumBytes []byte
 var fontLightBytes []byte
 
 var (
-	ipv4Regex     = regexp.MustCompile(`(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`)
-	ipv6Regex     = regexp.MustCompile(`(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9]))`)
-	hostnameRegex = regexp.MustCompile(`"hostname":"([^\\\\"]|\\\\")*"`)
-
 	fontLight, fontBold                                                                                                *truetype.Font
 	pingJitterLabelFace, upDownLabelFace, pingJitterValueFace, upDownValueFace, smallLabelFace, ispFace, watermarkFace font.Face
 
@@ -69,21 +65,8 @@ var (
 )
 
 type Result struct {
-	ProcessedString string         `json:"processedString"`
-	RawISPInfo      IPInfoResponse `json:"rawIspInfo"`
-}
-
-type IPInfoResponse struct {
-	IP           string `json:"ip"`
-	Hostname     string `json:"hostname"`
-	City         string `json:"city"`
-	Region       string `json:"region"`
-	Country      string `json:"country"`
-	Location     string `json:"loc"`
-	Organization string `json:"org"`
-	Postal       string `json:"postal"`
-	Timezone     string `json:"timezone"`
-	Readme       string `json:"readme"`
+	ProcessedString string                 `json:"processedString"`
+	RawISPInfo      iputils.IPInfoResponse `json:"rawIspInfo"`
 }
 
 func Initialize(c *config.Config) {
@@ -151,11 +134,16 @@ func Record(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ipAddr, _, _ := net.SplitHostPort(r.RemoteAddr)
+	ip := iputils.GetClientIP(r)
+	if iputils.IsLimited(ip) {
+		w.WriteHeader(403)
+		_, _ = fmt.Fprintf(w, "traffic limit")
+		return
+	}
+
 	userAgent := r.UserAgent()
 	language := r.Header.Get("Accept-Language")
 
-	ispInfo := r.FormValue("ispinfo")
 	download := r.FormValue("dl")
 	upload := r.FormValue("ul")
 	ping := r.FormValue("ping")
@@ -163,23 +151,13 @@ func Record(w http.ResponseWriter, r *http.Request) {
 	logs := r.FormValue("log")
 	extra := r.FormValue("extra")
 
-	if config.LoadedConfig().RedactIP {
-		ipAddr = "0.0.0.0"
-		ipv4Regex.ReplaceAllString(ispInfo, "0.0.0.0")
-		ipv4Regex.ReplaceAllString(logs, "0.0.0.0")
-		ipv6Regex.ReplaceAllString(ispInfo, "0.0.0.0")
-		ipv6Regex.ReplaceAllString(logs, "0.0.0.0")
-		hostnameRegex.ReplaceAllString(ispInfo, `"hostname":"REDACTED"`)
-		hostnameRegex.ReplaceAllString(logs, `"hostname":"REDACTED"`)
-	}
-
 	var record schema.TelemetryData
-	record.IPAddress = ipAddr
-	if ispInfo == "" {
-		record.ISPInfo = "{}"
-	} else {
-		record.ISPInfo = ispInfo
-	}
+	record.IPAddress = ip
+
+	ipInfo := iputils.GetIPInfo(ip)
+	ipInfoStr, _ := json.Marshal(ipInfo)
+	record.ISPInfo = string(ipInfoStr)
+
 	record.Extra = extra
 	record.UserAgent = userAgent
 	record.Language = language
@@ -193,6 +171,14 @@ func Record(w http.ResponseWriter, r *http.Request) {
 	entropy := ulid.Monotonic(rand.New(rand.NewSource(t.UnixNano())), 0)
 	uuid := ulid.MustNew(ulid.Timestamp(t), entropy)
 	record.UUID = uuid.String()
+
+	if !conf.SameIPMultiLogs {
+		if err := database.DB.Delete(&record); err != nil {
+			log.Errorf("Error inserting delete database: %s", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
 
 	err := database.DB.Insert(&record)
 	if err != nil {
@@ -210,7 +196,7 @@ func Record(w http.ResponseWriter, r *http.Request) {
 func DrawPNG(w http.ResponseWriter, r *http.Request) {
 	conf := config.LoadedConfig()
 
-	if conf.DatabaseType == "none" {
+	if conf.DatabaseType == "none" || !conf.EnableResultPNG {
 		return
 	}
 

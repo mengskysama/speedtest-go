@@ -13,6 +13,7 @@ type Config struct {
 	ServerLat         float64 `mapstructure:"server_lat"`
 	ServerLng         float64 `mapstructure:"server_lng"`
 	IPInfoAPIKey      string  `mapstructure:"ipinfo_api_key"`
+	GeoIPApiProvider  string  `mapstructure:"geo_ip_api_provider"`
 
 	StatsPassword string `mapstructure:"statistics_password"`
 
@@ -59,6 +60,7 @@ func init() {
 	viper.SetDefault("ip_daily_traffic_limit", 0)
 	viper.SetDefault("same_ip_multi_logs", false)
 	viper.SetDefault("enable_xff_ip", false)
+	viper.SetDefault("geo_ip_api_provider", "ip.sb")
 
 	viper.SetConfigName("settings")
 	viper.AddConfigPath(".")

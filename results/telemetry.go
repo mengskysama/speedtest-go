@@ -65,8 +65,8 @@ var (
 )
 
 type Result struct {
-	ProcessedString string                 `json:"processedString"`
-	RawISPInfo      iputils.IPInfoResponse `json:"rawIspInfo"`
+	ProcessedString string         `json:"processedString"`
+	RawISPInfo      iputils.IPInfo `json:"rawIspInfo"`
 }
 
 func Initialize(c *config.Config) {

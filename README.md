@@ -102,6 +102,9 @@ manually, you can install newer version of Go into your `GOPATH`:
     # Server location
     server_lat=0
     server_lng=0
+
+    # geo ip provider ipinfo.io or ip.sb
+    geo_ip_api_provider="ip.sb"
     # ipinfo.io API key, if applicable
     ipinfo_api_key=""
 

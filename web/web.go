@@ -286,9 +286,7 @@ func getIP(w http.ResponseWriter, r *http.Request) {
 			if ispInfo.City != "" {
 				display += ", " + ispInfo.City
 			}
-			if ispInfo.Location != "" {
-				display += " (" + calculateDistance(ispInfo.Location, distanceUnit) + ")"
-			}
+			display += " (" + calculateDistance(ispInfo.Latitude, ispInfo.Longitude, distanceUnit) + ")"
 		}
 		ret.ProcessedString += " - " + display
 	}

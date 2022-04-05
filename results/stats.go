@@ -61,7 +61,7 @@ func PublicStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ipInfo := &iputils.IPInfoResponse{}
+	ipInfo := &iputils.IPInfo{}
 	ds := make([]PublicData, len(stats))
 	for idx, s := range stats {
 		d := PublicData{}

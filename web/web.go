@@ -5,6 +5,18 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"github.com/go-chi/httprate"
+	"io"
+	"io/fs"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/coreos/go-systemd/activation"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -15,15 +27,6 @@ import (
 	"github.com/librespeed/speedtest/results"
 	"github.com/pires/go-proxyproto"
 	log "github.com/sirupsen/logrus"
-	"io"
-	"io/fs"
-	"io/ioutil"
-	"net"
-	"net/http"
-	"os"
-	"regexp"
-	"strconv"
-	"strings"
 )
 
 const (
@@ -94,6 +97,17 @@ func ListenAndServe(conf *config.Config) error {
 	r.Post("/backend/results/telemetry.php", results.Record)
 	r.HandleFunc("/stats.php", results.Stats)
 	r.HandleFunc("/backend/stats.php", results.Stats)
+
+	tg := r.Group(nil)
+	tg.Use(httprate.Limit(
+		20,
+		time.Minute,
+		httprate.WithKeyFuncs(func(r *http.Request) (string, error) {
+			return r.URL.Path + iputils.GetClientIP(r), nil
+		}),
+	))
+	tg.Get("/captcha", genCaptcha)
+	tg.Get("/token", getToken)
 
 	go listenProxyProtocol(conf, r)
 
@@ -178,6 +192,12 @@ func empty(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !CheckToken(r) {
+		w.WriteHeader(403)
+		_, _ = fmt.Fprintf(w, "bad token")
+		return
+	}
+
 	n, err := io.CopyN(ioutil.Discard, r.Body, uploadBodyLimit)
 	iputils.AddTraffic(ip, n)
 	if err != nil {
@@ -195,6 +215,12 @@ func garbage(w http.ResponseWriter, r *http.Request) {
 	if iputils.IsLimited(ip) {
 		w.WriteHeader(403)
 		_, _ = fmt.Fprintf(w, "traffic limit")
+		return
+	}
+
+	if !CheckToken(r) {
+		w.WriteHeader(403)
+		_, _ = fmt.Fprintf(w, "bad token")
 		return
 	}
 
@@ -231,6 +257,11 @@ func garbage(w http.ResponseWriter, r *http.Request) {
 }
 
 func getIP(w http.ResponseWriter, r *http.Request) {
+	if !CheckToken(r) {
+		w.WriteHeader(403)
+		_, _ = fmt.Fprintf(w, "bad token")
+		return
+	}
 
 	var ret results.Result
 

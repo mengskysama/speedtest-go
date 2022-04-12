@@ -8,10 +8,8 @@ This is a very lightweight speed test implemented in JavaScript, using XMLHttpRe
 
 ## Quick start
 ```
-mkdir -p /opt/speedtest-go && cd /opt/speedtest-go
-wget https://github.com/mengskysama/speedtest-go/releases/download/v1.1.5-alpha/speedtest-go-v1.1.5-alpha-linux-amd64.tar.gz
-tar -zxvf speedtest-go-v1.1.5-alpha-linux-amd64.tar.gz
-nohup ./speedtest-go -c settings.toml &
+# Install docker: curl -sSL https://get.docker.com/ | sh && systemctl enable docker
+docker run -d -e TZ=Asia/Shanghai -e ENABLE_CAPTCHA=1 -e INFLIGHT_TEST_LIMIT=1 --network host --restart=always --name speedtest-go mengskysama/speedtest-go:v1.17-alpha-alpine3.15
 ```
 
 ## Try it
@@ -141,6 +139,14 @@ manually, you can install newer version of Go into your `GOPATH`:
 
     # if behind proxy open it read real ip from x-forwarded-for
     enable_xff_ip=false
+
+    #incompatible config
+    # enable captcha
+    enable_captcha=false
+    # inflight test, captcha mode inflight limit
+    inflight_test_limit=0
+    # inflight token expire time
+    token_ttl_duration="60s"
     ```
 
 ## Differences between Go and PHP implementation and caveats

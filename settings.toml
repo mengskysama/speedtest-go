@@ -46,3 +46,12 @@ same_ip_multi_logs=false
 
 # if behind proxy open it read real ip from x-forwarded-for
 enable_xff_ip=false
+
+
+#incompatible config
+# enable captcha
+enable_captcha=false
+# inflight test, captcha mode inflight limit
+inflight_test_limit=0
+# inflight token expire time
+token_ttl_duration="60s"

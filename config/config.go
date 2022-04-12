@@ -4,6 +4,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -36,6 +37,10 @@ type Config struct {
 	IPDailyTrafficLimit int64 `mapstructure:"ip_daily_traffic_limit"`
 	SameIPMultiLogs     bool  `mapstructure:"same_ip_multi_logs"`
 	EnableXFFIP         bool  `mapstructure:"enable_xff_ip"`
+
+	EnableCaptcha     bool   `mapstructure:"enable_captcha"`
+	InflightTestLimit int64  `mapstructure:"inflight_test_limit"`
+	TokenTTLDuration  string `mapstructure:"token_ttl_duration"`
 }
 
 var (
@@ -62,6 +67,11 @@ func init() {
 	viper.SetDefault("enable_xff_ip", false)
 	viper.SetDefault("geo_ip_api_provider", "ip.sb")
 
+	// incompatible config
+	viper.SetDefault("enable_captcha", false)
+	viper.SetDefault("inflight_test_limit", 0)
+	viper.SetDefault("token_ttl_duration", "60s")
+
 	viper.SetConfigName("settings")
 	viper.AddConfigPath(".")
 }
@@ -82,13 +92,29 @@ func Load(configPath string) Config {
 		}
 	}
 
+	ApplyEnvSettings()
+
 	if err := viper.Unmarshal(&conf); err != nil {
 		log.Fatalf("Error parsing config: %s", err)
 	}
 
 	loadedConfig = &conf
-
 	return conf
+}
+
+func ApplyEnvSettings() {
+	if os.Getenv("ENABLE_CAPTCHA") != "" {
+		if os.Getenv("ENABLE_CAPTCHA") == "0" {
+			viper.Set("enable_captcha", false)
+		} else {
+			viper.Set("enable_captcha", true)
+		}
+	}
+
+	if os.Getenv("INFLIGHT_TEST_LIMIT") != "" {
+		n, _ := strconv.ParseInt(os.Getenv("INFLIGHT_TEST_LIMIT"), 10, 64)
+		viper.SetDefault("inflight_test_limit", n)
+	}
 }
 
 func LoadedConfig() *Config {

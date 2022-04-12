@@ -28,12 +28,27 @@
 			}
 		}
 
+		function solutionOnLoad() {
+			I("solution-img").hidden = ""
+			I("solution").hidden = ""
+		}
+
 		function startStop(){ //start/stop button pressed
 			if(s.getState()==3){
 				//speedtest is running, abort
 				s.abort();
 			}else{
 				//test is not running, begin
+				var request = new XMLHttpRequest();
+				request.open('GET','/token?solution='+I("solution").value, false);
+				request.send(null);
+				if(request.status >= 400){
+					if (request.status == 403) {
+						I("solution-img").src = "/captcha?r=" + Math.random()
+					}
+					alert(request.responseText)
+					return
+				}
 				s.start();
 				I("startStopBtn").className="running";
 			}
@@ -175,6 +190,8 @@
 </head>
 <body>
 <h1>LibreSpeed-Go</h1>
+<img id="solution-img" hidden="hidden" onload="solutionOnLoad()" src="/captcha">
+<input id="solution" hidden="hidden" type="text" size="5" placeholder="code" style="font-size: 30px;" maxlength="3" value="">
 <div id="startStopBtn" onclick="startStop()"></div>
 <div id="test">
 	<div id="progressBar"><div id="progress"></div></div>

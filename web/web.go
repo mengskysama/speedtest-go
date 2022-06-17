@@ -69,34 +69,31 @@ func ListenAndServe(conf *config.Config) error {
 		assetFS = justFilesFilesystem{fs: http.Dir(conf.AssetsPath), readDirBatchSize: 2}
 	}
 
-	r.Get("/*", pages(assetFS))
 	r.HandleFunc("/empty", empty)
 	r.HandleFunc("/backend/empty", empty)
 	r.Get("/garbage", garbage)
 	r.Get("/backend/garbage", garbage)
-	r.Get("/getIP", getIP)
-	r.Get("/backend/getIP", getIP)
-	r.Get("/results", results.DrawPNG)
-	r.Get("/results/", results.DrawPNG)
-	r.Get("/backend/results", results.DrawPNG)
-	r.Get("/backend/results/", results.DrawPNG)
-	r.Post("/results/telemetry", results.Record)
-	r.Post("/backend/results/telemetry", results.Record)
-	r.HandleFunc("/stats", results.Stats)
-	r.HandleFunc("/backend/stats", results.Stats)
-	r.HandleFunc("/backend/results-api.php", results.PublicStats)
 
 	// PHP frontend default values compatibility
 	r.HandleFunc("/empty.php", empty)
 	r.HandleFunc("/backend/empty.php", empty)
 	r.Get("/garbage.php", garbage)
 	r.Get("/backend/garbage.php", garbage)
-	r.Get("/getIP.php", getIP)
-	r.Get("/backend/getIP.php", getIP)
+
+	r.Post("/results/telemetry", results.Record)
+	r.Post("/backend/results/telemetry", results.Record)
 	r.Post("/results/telemetry.php", results.Record)
 	r.Post("/backend/results/telemetry.php", results.Record)
-	r.HandleFunc("/stats.php", results.Stats)
-	r.HandleFunc("/backend/stats.php", results.Stats)
+
+	as := r.Group(nil)
+	as.Use(httprate.Limit(
+		100,
+		time.Minute*10,
+		httprate.WithKeyFuncs(func(r *http.Request) (string, error) {
+			return r.URL.Path + iputils.GetClientIP(r), nil
+		}),
+	))
+	as.Get("/*", pages(assetFS))
 
 	tg := r.Group(nil)
 	tg.Use(httprate.Limit(
@@ -108,7 +105,19 @@ func ListenAndServe(conf *config.Config) error {
 	))
 	tg.Get("/captcha", genCaptcha)
 	tg.Get("/token", getToken)
-
+	tg.Get("/stats.php", results.Stats)
+	tg.Get("/backend/stats.php", results.Stats)
+	tg.HandleFunc("/stats", results.Stats)
+	tg.HandleFunc("/backend/stats", results.Stats)
+	tg.HandleFunc("/backend/results-api.php", results.PublicStats)
+	tg.Get("/getIP.php", getIP)
+	tg.Get("/backend/getIP.php", getIP)
+	tg.Get("/getIP", getIP)
+	tg.Get("/backend/getIP", getIP)
+	tg.Get("/results", results.DrawPNG)
+	tg.Get("/results/", results.DrawPNG)
+	tg.Get("/backend/results", results.DrawPNG)
+	tg.Get("/backend/results/", results.DrawPNG)
 	go listenProxyProtocol(conf, r)
 
 	// See if systemd socket activation has been used when starting our process
